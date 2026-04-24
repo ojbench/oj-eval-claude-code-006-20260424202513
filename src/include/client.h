@@ -201,14 +201,59 @@ void Decide() {
     }
   }
 
-  // 3. Last resort: simple heuristic - pick the cell with fewest unknown neighbors or just the first available
+  // 3. Last resort: select unknown grid with minimum probability of being a mine
+  double min_prob = 1.1;
+  int best_r = -1, best_c = -1;
+
+  std::vector<std::pair<int, int>> unknown_grids;
   for (int i = 0; i < rows; ++i) {
     for (int j = 0; j < columns; ++j) {
       if (map_info[i][j] == -1) {
-        Execute(i, j, 0);
-        return;
+        unknown_grids.push_back({i, j});
+
+        double prob = 1.0; // Default if no numbered neighbors
+        bool has_numbered_neighbor = false;
+
+        for (int di = -1; di <= 1; ++di) {
+          for (int dj = -1; dj <= 1; ++dj) {
+            if (di == 0 && dj == 0) continue;
+            int ni = i + di, nj = j + dj;
+            if (ni >= 0 && ni < rows && nj >= 0 && nj < columns) {
+              if (map_info[ni][nj] >= 0 && map_info[ni][nj] <= 8) {
+                int u = 0, m = 0;
+                for (int ddi = -1; ddi <= 1; ++ddi) {
+                  for (int ddj = -1; ddj <= 1; ++ddj) {
+                    if (ddi == 0 && ddj == 0) continue;
+                    int nni = ni + ddi, nnj = nj + ddj;
+                    if (nni >= 0 && nni < rows && nnj >= 0 && nnj < columns) {
+                      if (map_info[nni][nnj] == -1) u++;
+                      else if (map_info[nni][nnj] == 9) m++;
+                    }
+                  }
+                }
+                if (u > 0) {
+                  double p = (double)(map_info[ni][nj] - m) / u;
+                  if (p < prob) prob = p;
+                  has_numbered_neighbor = true;
+                }
+              }
+            }
+          }
+        }
+
+        if (!has_numbered_neighbor) prob = 0.5; // Slightly prefer grids near known ones
+
+        if (prob < min_prob) {
+          min_prob = prob;
+          best_r = i;
+          best_c = j;
+        }
       }
     }
+  }
+
+  if (best_r != -1) {
+    Execute(best_r, best_c, 0);
   }
 }
 
