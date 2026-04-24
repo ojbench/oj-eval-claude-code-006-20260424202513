@@ -85,45 +85,39 @@ void ReadMap() {
  * mind and make your decision here! Caution: you can only execute once in this function.
  */
 void Decide() {
-  // 1. Basic reasoning: check all visited non-mine grids
+  // 0. Check global mine count
+  int total_unknown = 0;
+  int current_marked = 0;
   for (int i = 0; i < rows; ++i) {
     for (int j = 0; j < columns; ++j) {
-      if (map_info[i][j] >= 0 && map_info[i][j] <= 8) {
-        int unknown_count = 0;
-        int marked_count = 0;
-        std::vector<std::pair<int, int>> unknown_neighbors;
-        for (int di = -1; di <= 1; ++di) {
-          for (int dj = -1; dj <= 1; ++dj) {
-            if (di == 0 && dj == 0) continue;
-            int ni = i + di, nj = j + dj;
-            if (ni >= 0 && ni < rows && nj >= 0 && nj < columns) {
-              if (map_info[ni][nj] == -1) {
-                unknown_count++;
-                unknown_neighbors.push_back({ni, nj});
-              } else if (map_info[ni][nj] == 9) {
-                marked_count++;
-              }
-            }
+      if (map_info[i][j] == -1) total_unknown++;
+      else if (map_info[i][j] == 9) current_marked++;
+    }
+  }
+  if (total_unknown > 0) {
+    if (total_mines - current_marked == total_unknown) {
+      for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < columns; ++j) {
+          if (map_info[i][j] == -1) {
+            Execute(i, j, 1);
+            return;
           }
         }
-
-        // Rule 1: All unknown neighbors are mines
-        if (unknown_count > 0 && map_info[i][j] == unknown_count + marked_count) {
-          Execute(unknown_neighbors[0].first, unknown_neighbors[0].second, 1);
-          return;
-        }
-
-        // Rule 2: All unknown neighbors are safe
-        if (unknown_count > 0 && map_info[i][j] == marked_count) {
-          Execute(i, j, 2); // AutoExplore will visit all safe neighbors
-          return;
+      }
+    }
+    if (total_mines - current_marked == 0) {
+      for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < columns; ++j) {
+          if (map_info[i][j] == -1) {
+            Execute(i, j, 0);
+            return;
+          }
         }
       }
     }
   }
 
-  // 2. Strong reasoning: Intersection/Subset logic
-  // Compare neighbors of two numbered cells that share unknown neighbors.
+  // 1. Basic reasoning: check all visited non-mine grids
   struct Cell { int r, c, val, unknown, marked; std::vector<std::pair<int, int>> neighbors; };
   std::vector<Cell> cells;
   for (int i = 0; i < rows; ++i) {
@@ -144,74 +138,74 @@ void Decide() {
             }
           }
         }
-        if (cell.unknown > 0) cells.push_back(cell);
+        if (cell.unknown > 0) {
+          // Rule 1: All unknown neighbors are mines
+          if (cell.val == cell.unknown + cell.marked) {
+            Execute(cell.neighbors[0].first, cell.neighbors[0].second, 1);
+            return;
+          }
+          // Rule 2: All unknown neighbors are safe
+          if (cell.val == cell.marked) {
+            Execute(i, j, 2);
+            return;
+          }
+          cells.push_back(cell);
+        }
       }
     }
   }
 
+  // 2. Overlap reasoning
   for (size_t a = 0; a < cells.size(); ++a) {
     for (size_t b = 0; b < cells.size(); ++b) {
       if (a == b) continue;
-      // If neighbors of A are a subset of neighbors of B
-      // The remaining mines in B must be at least (valA - markedA)
-      // Actually simpler: if A's unknown neighbors are a subset of B's unknown neighbors
-      bool is_subset = true;
+
+      std::vector<std::pair<int, int>> shared, onlyA, onlyB;
       for (auto &nA : cells[a].neighbors) {
-        bool found = false;
+        bool inB = false;
         for (auto &nB : cells[b].neighbors) {
-          if (nA == nB) { found = true; break; }
+          if (nA == nB) { inB = true; break; }
         }
-        if (!found) { is_subset = false; break; }
+        if (inB) shared.push_back(nA);
+        else onlyA.push_back(nA);
+      }
+      if (shared.empty()) continue;
+
+      for (auto &nB : cells[b].neighbors) {
+        bool inA = false;
+        for (auto &nA : cells[a].neighbors) {
+          if (nA == nB) { inA = true; break; }
+        }
+        if (!inA) onlyB.push_back(nB);
       }
 
-      if (is_subset) {
-        int mines_in_A = cells[a].val - cells[a].marked;
-        int mines_in_B = cells[b].val - cells[b].marked;
-        int extra_mines = mines_in_B - mines_in_A;
-        int extra_unknowns = cells[b].unknown - cells[a].unknown;
+      int ma = cells[a].val - cells[a].marked;
+      int mb = cells[b].val - cells[b].marked;
 
-        if (extra_unknowns > 0) {
-          if (extra_mines == 0) {
-            // All extra unknown neighbors in B are safe
-            for (auto &nB : cells[b].neighbors) {
-              bool inA = false;
-              for (auto &nA : cells[a].neighbors) {
-                if (nA == nB) { inA = true; break; }
-              }
-              if (!inA) {
-                Execute(nB.first, nB.second, 0);
-                return;
-              }
-            }
-          } else if (extra_mines == extra_unknowns) {
-            // All extra unknown neighbors in B are mines
-            for (auto &nB : cells[b].neighbors) {
-              bool inA = false;
-              for (auto &nA : cells[a].neighbors) {
-                if (nA == nB) { inA = true; break; }
-              }
-              if (!inA) {
-                Execute(nB.first, nB.second, 1);
-                return;
-              }
-            }
-          }
-        }
+      // min mines in shared = max(0, ma - onlyA.size())
+      int min_shared = (ma - (int)onlyA.size() > 0) ? (ma - (int)onlyA.size()) : 0;
+      // max mines in shared = min(ma, shared.size())
+      int max_shared = (ma < (int)shared.size()) ? ma : (int)shared.size();
+
+      if (min_shared == mb && !onlyB.empty()) {
+        Execute(onlyB[0].first, onlyB[0].second, 0);
+        return;
+      }
+      if (max_shared + (int)onlyB.size() == mb && !onlyB.empty()) {
+        Execute(onlyB[0].first, onlyB[0].second, 1);
+        return;
       }
     }
   }
 
-  // 3. Last resort: select unknown grid with minimum probability of being a mine
+  // 3. Last resort: probability heuristic
   double min_prob = 1.1;
   int best_r = -1, best_c = -1;
 
-  std::vector<std::pair<int, int>> unknown_grids;
   for (int i = 0; i < rows; ++i) {
     for (int j = 0; j < columns; ++j) {
       if (map_info[i][j] == -1) {
-        unknown_grids.push_back({i, j});
-
-        double prob = 1.0; // Default if no numbered neighbors
+        double prob = (double)(total_mines - current_marked) / total_unknown;
         bool has_numbered_neighbor = false;
 
         for (int di = -1; di <= 1; ++di) {
@@ -240,8 +234,7 @@ void Decide() {
             }
           }
         }
-
-        if (!has_numbered_neighbor) prob = 0.5; // Slightly prefer grids near known ones
+        if (!has_numbered_neighbor) prob *= 1.1; // Penalty for isolated cells if overall prob is low
 
         if (prob < min_prob) {
           min_prob = prob;
