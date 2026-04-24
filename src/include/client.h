@@ -122,8 +122,86 @@ void Decide() {
     }
   }
 
-  // 2. Strong reasoning (Subset / Intersection logic could go here)
-  // For now, let's try a simple random click if no logic works
+  // 2. Strong reasoning: Intersection/Subset logic
+  // Compare neighbors of two numbered cells that share unknown neighbors.
+  struct Cell { int r, c, val, unknown, marked; std::vector<std::pair<int, int>> neighbors; };
+  std::vector<Cell> cells;
+  for (int i = 0; i < rows; ++i) {
+    for (int j = 0; j < columns; ++j) {
+      if (map_info[i][j] >= 0 && map_info[i][j] <= 8) {
+        Cell cell = {i, j, map_info[i][j], 0, 0, {}};
+        for (int di = -1; di <= 1; ++di) {
+          for (int dj = -1; dj <= 1; ++dj) {
+            if (di == 0 && dj == 0) continue;
+            int ni = i + di, nj = j + dj;
+            if (ni >= 0 && ni < rows && nj >= 0 && nj < columns) {
+              if (map_info[ni][nj] == -1) {
+                cell.unknown++;
+                cell.neighbors.push_back({ni, nj});
+              } else if (map_info[ni][nj] == 9) {
+                cell.marked++;
+              }
+            }
+          }
+        }
+        if (cell.unknown > 0) cells.push_back(cell);
+      }
+    }
+  }
+
+  for (size_t a = 0; a < cells.size(); ++a) {
+    for (size_t b = 0; b < cells.size(); ++b) {
+      if (a == b) continue;
+      // If neighbors of A are a subset of neighbors of B
+      // The remaining mines in B must be at least (valA - markedA)
+      // Actually simpler: if A's unknown neighbors are a subset of B's unknown neighbors
+      bool is_subset = true;
+      for (auto &nA : cells[a].neighbors) {
+        bool found = false;
+        for (auto &nB : cells[b].neighbors) {
+          if (nA == nB) { found = true; break; }
+        }
+        if (!found) { is_subset = false; break; }
+      }
+
+      if (is_subset) {
+        int mines_in_A = cells[a].val - cells[a].marked;
+        int mines_in_B = cells[b].val - cells[b].marked;
+        int extra_mines = mines_in_B - mines_in_A;
+        int extra_unknowns = cells[b].unknown - cells[a].unknown;
+
+        if (extra_unknowns > 0) {
+          if (extra_mines == 0) {
+            // All extra unknown neighbors in B are safe
+            for (auto &nB : cells[b].neighbors) {
+              bool inA = false;
+              for (auto &nA : cells[a].neighbors) {
+                if (nA == nB) { inA = true; break; }
+              }
+              if (!inA) {
+                Execute(nB.first, nB.second, 0);
+                return;
+              }
+            }
+          } else if (extra_mines == extra_unknowns) {
+            // All extra unknown neighbors in B are mines
+            for (auto &nB : cells[b].neighbors) {
+              bool inA = false;
+              for (auto &nA : cells[a].neighbors) {
+                if (nA == nB) { inA = true; break; }
+              }
+              if (!inA) {
+                Execute(nB.first, nB.second, 1);
+                return;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Last resort: simple heuristic - pick the cell with fewest unknown neighbors or just the first available
   for (int i = 0; i < rows; ++i) {
     for (int j = 0; j < columns; ++j) {
       if (map_info[i][j] == -1) {
