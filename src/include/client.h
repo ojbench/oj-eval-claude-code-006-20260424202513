@@ -8,6 +8,15 @@ extern int rows;         // The count of rows of the game map.
 extern int columns;      // The count of columns of the game map.
 extern int total_mines;  // The count of mines of the game map.
 
+#include <vector>
+
+extern int rows;         // The count of rows of the game map.
+extern int columns;      // The count of columns of the game map.
+extern int total_mines;  // The count of mines of the game map.
+
+int map_info[35][35]; // -1: ?, 0-8: number, 9: @
+bool processed[35][35];
+
 // You MUST NOT use any other external variables except for rows, columns and total_mines.
 
 /**
@@ -35,6 +44,12 @@ void Execute(int r, int c, int type);
  */
 void InitGame() {
   // TODO (student): Initialize all your global variables!
+  for (int i = 0; i < 35; ++i) {
+    for (int j = 0; j < 35; ++j) {
+      map_info[i][j] = -1;
+      processed[i][j] = false;
+    }
+  }
   int first_row, first_column;
   std::cin >> first_row >> first_column;
   Execute(first_row, first_column, 0);
@@ -51,7 +66,16 @@ void InitGame() {
  *     01?
  */
 void ReadMap() {
-  // TODO (student): Implement me!
+  for (int i = 0; i < rows; ++i) {
+    for (int j = 0; j < columns; ++j) {
+      char c;
+      std::cin >> c;
+      if (c == '?') map_info[i][j] = -1;
+      else if (c == '@') map_info[i][j] = 9;
+      else if (c >= '0' && c <= '8') map_info[i][j] = c - '0';
+      else if (c == 'X') map_info[i][j] = 9; // Should not happen in ReadMap for advanced
+    }
+  }
 }
 
 /**
@@ -61,10 +85,53 @@ void ReadMap() {
  * mind and make your decision here! Caution: you can only execute once in this function.
  */
 void Decide() {
-  // TODO (student): Implement me!
-  // while (true) {
-  //   Execute(0, 0);
-  // }
+  // 1. Basic reasoning: check all visited non-mine grids
+  for (int i = 0; i < rows; ++i) {
+    for (int j = 0; j < columns; ++j) {
+      if (map_info[i][j] >= 0 && map_info[i][j] <= 8) {
+        int unknown_count = 0;
+        int marked_count = 0;
+        std::vector<std::pair<int, int>> unknown_neighbors;
+        for (int di = -1; di <= 1; ++di) {
+          for (int dj = -1; dj <= 1; ++dj) {
+            if (di == 0 && dj == 0) continue;
+            int ni = i + di, nj = j + dj;
+            if (ni >= 0 && ni < rows && nj >= 0 && nj < columns) {
+              if (map_info[ni][nj] == -1) {
+                unknown_count++;
+                unknown_neighbors.push_back({ni, nj});
+              } else if (map_info[ni][nj] == 9) {
+                marked_count++;
+              }
+            }
+          }
+        }
+
+        // Rule 1: All unknown neighbors are mines
+        if (unknown_count > 0 && map_info[i][j] == unknown_count + marked_count) {
+          Execute(unknown_neighbors[0].first, unknown_neighbors[0].second, 1);
+          return;
+        }
+
+        // Rule 2: All unknown neighbors are safe
+        if (unknown_count > 0 && map_info[i][j] == marked_count) {
+          Execute(i, j, 2); // AutoExplore will visit all safe neighbors
+          return;
+        }
+      }
+    }
+  }
+
+  // 2. Strong reasoning (Subset / Intersection logic could go here)
+  // For now, let's try a simple random click if no logic works
+  for (int i = 0; i < rows; ++i) {
+    for (int j = 0; j < columns; ++j) {
+      if (map_info[i][j] == -1) {
+        Execute(i, j, 0);
+        return;
+      }
+    }
+  }
 }
 
 #endif
