@@ -227,14 +227,19 @@ void Decide() {
                 }
                 if (u > 0) {
                   double p = (double)(map_info[ni][nj] - m) / u;
-                  if (p < prob) prob = p;
+                  if (!has_numbered_neighbor || p < prob) prob = p;
                   has_numbered_neighbor = true;
                 }
               }
             }
           }
         }
-        if (!has_numbered_neighbor) prob *= 1.1; // Penalty for isolated cells if overall prob is low
+        // Heuristic: prefer cells with more numbered neighbors or fewer unknown neighbors around those numbered ones
+        if (!has_numbered_neighbor) prob *= 1.05;
+
+        // Add a tiny bit of distance-to-center bias to break ties
+        double center_dist = (double)((i - rows/2)*(i - rows/2) + (j - columns/2)*(j - columns/2)) / (rows*rows + columns*columns);
+        prob += center_dist * 0.0001;
 
         if (prob < min_prob) {
           min_prob = prob;
